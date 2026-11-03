@@ -1,141 +1,225 @@
-# Project-203: Dockerization of Bookstore Web API (Python Flask) with MySQL
+# Bookstore API on AWS
 
-## Description
+**Python Flask · MySQL · Docker Compose · Terraform**
 
-Bookstore Web API Application aims to create a bookstore web service using Docker to give students an understanding of dockerization of an application. The application code is to be deployed as a RESTful web service with Flask using Dockerfile and Docker Compose on AWS Elastic Compute Cloud (EC2) Instance using Terraform.
+A hands-on deployment of a REST API for managing book records. Terraform provisions an Amazon Linux 2023 EC2 instance and a security group, and also manages the GitHub repository, its default branch, and four application files. The EC2 user-data script builds the application image and starts Flask and MySQL with Docker Compose.
 
-## Problem Statement
+Deployment implementation: [Yazen Albu](https://github.com/yazenAlbu). Based on the supplied Project 203 course starter files.
 
-![Project_203](203-bookstore-api.png) 
+## Architecture
 
-- Your team has started working on a project to create a `Bookstore` Application as a Web Service.  
-
-- Software Developers in your team have already developed the first version of `Bookstore` application. They have designed a database to keep book records with the following fields.
-
-  - book_id: unique identifier for books, type is numeric.
-
-  - title: title of the book, type is a string.
-
-  - author: author of the book. type is a string.
-
-  - is_sold: book availability status, type is boolean.
-
-- Your teammates also created the RESTful web service as given in [Bookstore API](./bookstore-api.py) using Python Flask Framework. Below table shows how the HTTP methods are designed to affect the given resources identified by URIs.
-
-| HTTP Method  | Action | Example|
-| --- | --- | --- |
-| `GET`     |   Obtain information about a resource | http://[ec2-hostname]/books (retrieves list of all books) |
-| `GET`     |   Obtain information about a resource | http://[ec2-hostname]/books/123 (retrieves book with id=123) |
-| `POST`    |   Create a new resource               | http://[ec2-hostname]/books (creates a new book, from data provided with the request) |
-| `PUT`     |   Update a resource                   | http://[ec2-hostname]/books/123 (updates the book with id=123, from data provided with the request) |
-| `DELETE`  |   Delete a resource                   | http://[ec2-hostname]/books/123 (delete the book with id=123) |
-
-- You are, as a cloud engineer, requested to deploy the app in the development environment on a Docker Machine on AWS EC2 Instance using Terraform to showcase your project. To do that you need to;
-
-  - Get the app code from your team's GitHub repo.
-
-  - Create a docker image using the `Dockerfile`.
-
-  - Deploy the app using `docker compose`. To do so;
-
-    - Create a database service using MySQL.
-
-    - Configure the app service to run on `port 80`.
-
-    - Use a custom network for the services.
-
-- In the development environment, you can configure your Terraform config file using the following,
-
-  - The application should be created with new AWS resources.
-
-  - The application should run on Amazon Linux 2 EC2 Instance
-
-  - EC2 Instance type can be configured as `t2.micro`.
-
-  - Instance launched by Terraform should be tagged `Web Server of Bookstore`
-
-  - The web application should be accessible from anywhere via a web browser.
-
-  - The Application files should be downloaded from the Github repo and deployed on the EC2 Instance using the user data script within the Terraform configuration file.
-
-  - Bookstore Web API URL should be given as output by Terraform, after the resourcesare created.
-
-## Project Skeleton
-
-```text
-203-dockerization-bookstore-api-on-python-flask-mysql (folder)
-|
-|----readme.md          # Given to the students (Definition of the project)
-|----bookstore-api.py   # Given to the students (Python Flask Web API)
-|----requirements.txt   # Given to the students (List of Flask modules for Web API)
-|----main.tf            # To be delivered by students (Terraform config file)
-|----docker-compose.yml # To be delivered by students
-|----Dockerfile         # To be delivered by students
-|----cfn-template.yml   # To be delivered by students (Optional)
+```mermaid
+flowchart TD
+    subgraph HOST["One EC2 instance: Amazon Linux 2023"]
+        API["Flask container: bookstore"] -->|"books-net, port 3306"| DB["MySQL 5.7 container: database"]
+        DB --- VOL["mysql-volume: database files"]
+    end
+    TF["Terraform on the local machine"] -->|"Manage repository and files"| GH["GitHub repository"]
+    TF -->|"Provision EC2 and security group"| HOST
+    GH -->|"User data clones source and builds image"| HOST
+    CLIENT["HTTP client"] -->|"HTTP port 80"| API
 ```
 
-## Expected Outcome
+- Flask serves the API on container port `80`, published as EC2 port `80`.
+- MySQL runs in a separate container on the same EC2 instance.
+- The services communicate over `books-net`; MySQL port `3306` is not published to the host.
+- `mysql-volume` is mounted at `/var/lib/mysql` to retain database files across container recreation.
+- Compose waits for the MySQL health check before starting the API.
 
-### At the end of the project, the following topics are to be covered;
+## Configuration
 
-- MySQL Database Configuration
+| Setting | Current value |
+| --- | --- |
+| AWS Region | `us-east-1` |
+| EC2 operating system | Amazon Linux 2023, latest matching Amazon-owned x86_64 AMI |
+| EC2 instance type | `t3.small` |
+| Existing EC2 key pair | `linuspass` |
+| GitHub account | `yazenAlbu` |
+| Repository | `bookstore-api-app`, public |
+| Application image | `bookstore:latest`, built on EC2 |
+| Python base image | `python:3.13.2-alpine3.21` |
+| Database image | `mysql:5.7` |
+| Network / volume | `books-net` / `mysql-volume` |
 
-- Bash scripting
+The default VPC and EC2 key pair must already exist in `us-east-1`; this Terraform configuration does not create them. The security group permits SSH on port `22` and HTTP on port `80`.
 
-- Docker Images
+## Repository files
 
-- Docker Compose
+| File | Purpose |
+| --- | --- |
+| [bookstore-api.py](bookstore-api.py) | Flask routes, database access, table initialization, and three seed books. |
+| [requirements.txt](requirements.txt) | Python dependencies: Flask 2.3.3 and Flask-MySQL. |
+| [Dockerfile](Dockerfile) | Builds the Flask application image. |
+| [compose.yaml](compose.yaml) | Defines both services, the network, volume, and database readiness check. |
+| [main.tf](main.tf) | GitHub resources, security group, AMI lookup, and EC2 instance. |
+| [providers.tf](providers.tf) | AWS and GitHub providers. |
+| [variables.tf](variables.tf) | GitHub token input, account, key pair, instance type, and managed application files. |
+| [user-data.sh](user-data.sh) | Installs Docker, Git, and Compose, then clones, builds, and starts the application. |
+| [outputs.tf](outputs.tf) | Returns the deployed website URL. |
+| [.terraform.lock.hcl](.terraform.lock.hcl) | Locks the provider versions used by Terraform. |
+| [.gitignore](.gitignore) | Excludes local Terraform state, plans, credentials, and working files. |
 
-- AWS EC2 Service
+## Prerequisites
 
-- AWS Security Group Configuration
+- Git and Terraform CLI on the local machine.
+- AWS CLI credentials configured for the intended AWS account.
+- A default VPC with public subnets in `us-east-1`.
+- The `linuspass` EC2 key pair in that Region; retain its matching private key locally for SSH.
+- A GitHub personal access token with permission to administer this public repository and write its contents. It must authenticate the same account configured in `git-user-name`.
 
-- AWS Cloudformation Service (Optional)
+Terraform prompts for `git-token` when needed. Its value is marked sensitive and has no hardcoded default. Enter the token locally; do not put it in committed files. Keep Terraform state and saved plans local because they can contain sensitive information.
 
-- Terraform Configuration with AWS
+Docker is installed on EC2 by user data. Before applying from Windows, save `user-data.sh` with **LF** line endings.
 
-- Git & GitHub for Version Control System
+## Deploy
 
-### At the end of the project, students will be able to;
+The commands below use PowerShell, matching the local workflow used for this project.
 
-- configure the connection to the `MySQL` database.
+### 1. Clone the project
 
-- build a Docker image.
+```powershell
+git clone https://github.com/yazenAlbu/bookstore-api-app.git
+cd bookstore-api-app
+```
 
-- configure Docker Compose to run the Python Flask app.
+Review the values in `variables.tf`, especially the GitHub account, key pair, and instance type. The AWS Region is set in `providers.tf`.
 
-- improve bash scripting skills using `user data` section in Terraform to install and set web application on EC2 Instance
+### 2. Initialize Terraform
 
-- configure AWS EC2 Instance and Security Groups.
+```powershell
+terraform init
+```
 
-- configure Terraform files to use AWS Resources.
+### 3. Import the existing repository when using fresh state
 
-- use git commands (push, pull, commit, add, etc.) and GitHub as a Version Control System.
+This repository already exists. When deploying this project from a **fresh clone with no local Terraform state**, register it with Terraform once:
 
-- run the web application on AWS EC2 instance using the GitHub repo as codebase.
+```powershell
+terraform import github_repository.myrepo bookstore-api-app
+```
 
-## Steps to Solution
-  
-- Step 1: Download or clone the project definition from `clarusway-aws-workshop` repo on Github
+Use the repository name as the import ID. If reusing the original working directory and retained state, skip this import when the repository is already managed.
 
-- Step 2: Create a project folder for local public repo on your pc
+The existing `main` branch is handled by the branch resource. The application-file resource uses `overwrite_on_create = true` to manage the four existing application files.
 
-- Step 3: Prepare scripts to build a Python Flask App Image using Dockerfile and Docker Compose
+### 4. Review and apply
 
-- Step 4: Prepare a Terraform configuration file to deploy your app on EC2 Instance
+```powershell
+terraform plan
+terraform apply
+```
 
-- Step 5: Push your application into your public repo on GitHub
+Review the plan before confirming. For this deployment, no repository deletion or replacement is expected.
 
-- Step 6: Deploy your application on AWS Cloud using Terraform to showcase your app within your team.
+The EC2 user-data script installs the required software, clones the public repository, builds `bookstore:latest`, and runs `docker-compose up -d`. Infrastructure creation can finish before this bootstrap process completes.
 
-## Notes
+### 5. Get the application URL
 
-- To showcase your project's REST functions, use `curl` command for each HTTP method namely, `GET`, `POST`, `PUT`, `DELETE`.
+```powershell
+terraform output
+```
 
-## Resources
+Open the `website-url` output for the welcome message, or append `/books` to list the books. The public IP is assigned at deployment time, so it is not stored here as a permanent demo link.
 
-- [REpresentational State Transfer](https://en.wikipedia.org/wiki/Representational_state_transfer)
+## API
 
-- [Terraform AWS Provider Documentaion](https://registry.terraform.io/providers/hashicorp/aws/latest/docs)
+Each book has these fields:
 
-- [AWS Cloudformation User Guide](https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/Welcome.html) (Optional)
+| Field | Meaning |
+| --- | --- |
+| `book_id` | Automatically generated numeric identifier. |
+| `title` | Book title; required when creating a book. |
+| `author` | Author name; optional when creating a book. |
+| `is_sold` | Boolean sale status; defaults to `false` and can be changed with `PUT`. |
+
+Responses use JSON, except for the welcome message at `/`. For requests with a JSON body, use `Content-Type: application/json`.
+
+| Method | Path | Action |
+| --- | --- | --- |
+| `GET` | `/` | Welcome message. |
+| `GET` | `/books` | List all books. |
+| `GET` | `/books/{book_id}` | Read one book. |
+| `POST` | `/books` | Create a book. |
+| `PUT` | `/books/{book_id}` | Update a book. |
+| `DELETE` | `/books/{book_id}` | Delete a book. |
+
+Replace `{book_id}` with the actual ID returned by the API.
+
+### Create a book
+
+Send this JSON body with `POST /books`:
+
+```json
+{
+  "title": "Docker Basics",
+  "author": "Yazen"
+}
+```
+
+The response includes the new `book_id`. A new book defaults to `is_sold: false`.
+
+### Update a book
+
+Send this JSON body with `PUT /books/{book_id}`:
+
+```json
+{
+  "is_sold": true
+}
+```
+
+`true` means the book is sold. The update route also accepts `title` and `author`.
+
+### Delete a book
+
+Send `DELETE /books/{book_id}`. A successful deletion returns:
+
+```json
+{
+  "result": true
+}
+```
+
+During the walkthrough, Terraform deployment, listing books with `GET`, and creating a book with `POST` were confirmed. The `PUT` and `DELETE` routes are implemented in the supplied application code; their live execution was not confirmed in this walkthrough.
+
+## Clean up AWS while keeping GitHub
+
+Terraform manages both AWS and GitHub resources. An unrestricted destroy would include the repository and its managed files. For this project's AWS-only cleanup, use a saved, targeted deletion plan:
+
+```powershell
+terraform plan -destroy "-target=aws_instance.tf-docker-ec2" "-target=aws_security_group.tf-docker-sg" "-out=cleanup.tfplan"
+```
+
+For a running deployment, the deletion entries must be exactly:
+
+- `aws_instance.tf-docker-ec2`
+- `aws_security_group.tf-docker-sg`
+
+The expected summary is:
+
+```text
+Plan: 0 to add, 0 to change, 2 to destroy.
+```
+
+Do not apply a plan that deletes GitHub resources. Check that the instance's root volume has `delete_on_termination = true` so the disk is removed with EC2. If that value is false, the retained disk needs separate handling.
+
+Apply the reviewed saved plan:
+
+```powershell
+terraform apply cleanup.tfplan
+terraform state list
+```
+
+After cleanup, the EC2 and security-group resources should be absent from state, while the GitHub resources remain. A retained `data.aws_ami.al2023` entry is only an AMI lookup record.
+
+Keep the local state for future management of the retained GitHub resources. Delete the temporary saved plan after successful cleanup:
+
+```powershell
+Remove-Item .\cleanup.tfplan
+```
+
+The GitHub repository preserves the source code. Deleting EC2 and its root disk also deletes the Docker images, containers, and MySQL volume data stored on that disk. A later deployment on a new disk initializes the seed books again.
+
+## Course reference
+
+This implementation follows the supplied Project 203 Bookstore API exercise. The [original course illustration](203-bookstore-api.png) includes CloudFormation; the actual implementation in this repository uses Terraform, as shown in the architecture diagram above.

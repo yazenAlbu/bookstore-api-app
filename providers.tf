@@ -13,10 +13,9 @@ terraform {
 }
 
 provider "aws" {
-  # Configuration options
   region = "us-east-1"
 }
 
 provider "github" {
-  token = var.git-token # or `GITHUB_TOKEN`
+  token = var.git-token
 }

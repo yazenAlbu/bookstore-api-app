@@ -1,9 +1,8 @@
 resource "github_repository" "myrepo" {
   name        = "bookstore-api-app"
-  visibility  = "private"
+  visibility  = "public"
   description = "managed by Terraform"
   auto_init   = true
-
 }
 
 resource "github_branch_default" "mydefaultbranch" {
@@ -22,9 +21,10 @@ resource "github_repository_file" "app-files" {
 }
 
 resource "aws_security_group" "tf-docker-sg" {
-  name = "docker-sec-gr-203-david"
+  name = "docker-sec-gr-203-yazen"
+
   tags = {
-    Name = "project-203-sg-david"
+    Name = "project-203-sg-yazen"
   }
 
   ingress {
@@ -76,10 +76,15 @@ resource "aws_instance" "tf-docker-ec2" {
   vpc_security_group_ids = [aws_security_group.tf-docker-sg.id]
 
   tags = {
-    Name = "David's Web Server of Bookstore"
+    Name = "Yazen's Web Server of Bookstore"
   }
 
-  user_data = templatefile("user-data.sh", { user-data-git-token = var.git-token, user-data-git-user-name = var.git-user-name })
+  user_data = templatefile("user-data.sh", {
+    user-data-git-user-name = var.git-user-name
+  })
 
-  depends_on = [github_repository.myrepo, github_repository_file.app-files]
+  depends_on = [
+    github_repository.myrepo,
+    github_repository_file.app-files
+  ]
 }
